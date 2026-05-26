@@ -58,7 +58,7 @@ helm install kserve oci://ghcr.io/kserve/charts/kserve   --version v0.16.0   -n 
 
 ```
 
-### Deploy the Intent Classifier model
+### Deploy the Intent Classifier model using storge ui as google storage ####
 
 ```
 kubectl create namespace intent
@@ -83,6 +83,49 @@ spec:
           memory: "1Gi"
 EOF
 
+### Port-forward to access the model
+
+```
+kubectl -n intent port-forward svc/<svc-name> 8080:80
+```
+
+### Inference the Model
+
+```
+curl -s -H "Content-Type: application/json"   -d '{"instances":[[5.9,3.0,5.1,1.8]]}'   http://localhost:8080/v1/models/intent-classifier:predict
+```
+
+
+/////////////////////////////////////////////////////////////
+
+
+### Deploy the Intent Classifier model using github release where all code present ####
+### This method used in production ############
+
+
+```
+kubectl create namespace ml
+
+cat <<EOF | kubectl apply -n ml -f -
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: intent-classifier-ml
+spec:
+  predictor:
+    model:
+      modelFormat:
+        name: sklearn
+      storageUri: "https://github.com/Himanshu-garg-hg/intent-classifier-model/releases/download/v1.0/intent_model.pkl"
+      resources:
+        requests:
+          cpu: "100m"
+          memory: "512Mi"
+        limits:
+          cpu: "1"
+          memory: "1Gi"
+EOF
+
 
 
 ```
@@ -96,6 +139,7 @@ kubectl -n ml port-forward svc/<svc-name> 8080:80
 ### Inference the Model
 
 ```
-curl -s -H "Content-Type: application/json"   -d '{"instances":[[5.9,3.0,5.1,1.8]]}'   http://localhost:8080/v1/models/intent-classifier:predict
+curl -s -X POST http://localhost:8090/v1/models/intent-classifier-ml:predict   -H "Content-Type: application/json" -d '{"instances":["I want to cancel my subscription"]}'
+
 ```
 
