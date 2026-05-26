@@ -1,0 +1,101 @@
+# Create Resource Group
+az group create \
+  --name my-rg \
+  --location eastus
+
+# Create AKS Cluster
+az aks create \
+  --resource-group my-rg \
+  --name test-kserve \
+  --location eastus \
+  --kubernetes-version 1.34.7 \
+  --node-count 1 \
+  --node-vm-size Standard_D4ds_v4 \
+  --network-plugin azure \
+  --network-policy calico \
+  --load-balancer-sku standard \
+  --enable-managed-identity \
+  --enable-oidc-issuer \
+  --enable-workload-identity \
+  --enable-image-cleaner \
+  --dns-name-prefix test-kserve-dns \
+  --tier free \
+  --auto-upgrade-channel none \
+  --node-os-upgrade-channel NodeImage \
+  --generate-ssh-keys
+
+# Connect kubectl to AKS
+az aks get-credentials \
+  --resource-group my-rg \
+  --name test-kserve
+
+# Verify
+kubectl get nodes
+
+
+
+
+# Kserve Demonstration for Iris model
+
+### Install Cert Manager
+
+```
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/latest/download/cert-manager.yaml
+```
+
+### Install KServe CRDs
+
+```
+kubectl create namespace kserve
+
+helm install kserve-crd oci://ghcr.io/kserve/charts/kserve-crd   --version v0.16.0   -n kserve   --wait
+```
+
+### Install KServe controller
+
+```
+helm install kserve oci://ghcr.io/kserve/charts/kserve   --version v0.16.0   -n kserve   --set kserve.controller.deploymentMode=RawDeployment   --wait
+
+```
+
+### Deploy the Intent Classifier model
+
+```
+kubectl create namespace intent
+
+cat <<EOF | kubectl apply -n intent -f -
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: intent-classifier
+spec:
+  predictor:
+    model:
+      modelFormat:
+        name: sklearn
+      storageUri: "gs://kfserving-examples/models/sklearn/1.0/model"
+      resources:
+        requests:
+          cpu: "100m"
+          memory: "512Mi"
+        limits:
+          cpu: "1"
+          memory: "1Gi"
+EOF
+
+
+
+```
+
+### Port-forward to access the model
+
+```
+kubectl -n ml port-forward svc/<svc-name> 8080:80
+```
+
+### Inference the Model
+
+```
+curl -s -H "Content-Type: application/json"   -d '{"instances":[[5.9,3.0,5.1,1.8]]}'   http://localhost:8080/v1/models/intent-classifier:predict
+```
+

@@ -1,0 +1,23 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: intentapp-namespace
+  name: intentapp-deployment
+  labels:
+    app: intentapp
+spec:
+  replicas: 1
+  selector: 
+    matchLabels:
+      app: intentapp
+  template:
+    metadata:
+      name: intentapp-pod
+      labels:
+        app: intentapp
+    spec:
+      containers:
+       - name: intentapp-container
+         image: himanshu951garg/intent-classifier-model-image:v1
+         ports:
+          - containerPort: 6000

@@ -1,0 +1,41 @@
+KServe installation and recovery steps
+
+1. Clean up any old or failed KServe state:
+   kubectl delete ns kserve --ignore-not-found
+   helm uninstall kserve -n kserve --ignore-not-found
+   helm uninstall kserve-crd -n kserve --ignore-not-found
+
+2. Install KServe CRDs first:
+   helm install kserve-crd oci://ghcr.io/kserve/charts/kserve-crd --version v0.16.0 -n kserve --create-namespace --wait --timeout 5m
+
+3. Try the normal KServe install:
+   helm install kserve oci://ghcr.io/kserve/charts/kserve --version v0.16.0 -n kserve --set kserve.controller.deploymentMode=RawDeployment --wait --timeout 10m
+
+4. If the Helm install fails with webhook "no endpoints available" errors, use the manual manifest patch method:
+   helm template kserve oci://ghcr.io/kserve/charts/kserve --version v0.16.0 -n kserve --set kserve.controller.deploymentMode=RawDeployment | Out-File -Encoding utf8 kserve-manifest.yaml
+   Get-Content kserve-manifest.yaml | ForEach-Object { $_ -replace 'failurePolicy: Fail', 'failurePolicy: Ignore' } | Set-Content kserve-manifest-patched.yaml
+   kubectl apply -f kserve-manifest-patched.yaml
+
+5. If the controller pod fails to start because the service account is missing, create it:
+   $yaml = @'
+   apiVersion: v1
+   kind: ServiceAccount
+   metadata:
+     name: kserve-controller-manager
+     namespace: kserve
+   '@
+   $yaml | kubectl apply -f -
+
+6. Restart the KServe controller deployment after creating the service account:
+   kubectl rollout restart deployment/kserve-controller-manager -n kserve
+   kubectl rollout status deployment/kserve-controller-manager -n kserve --timeout=5m
+
+7. Verify the final state:
+   kubectl get pods,svc,endpoints -n kserve
+   kubectl get validatingwebhookconfiguration,mutatingwebhookconfiguration -n kserve
+
+Notes:
+- The main failure was caused by Helm validating KServe webhook resources before the webhook service endpoints were ready.
+- The safest first attempt is install CRDs first, then install the main chart with a longer timeout.
+- If the install still fails, the manual patched manifest approach avoids the webhook race problem.
+- If the controller still won’t create pods, verify the service account and restart the deployment.
